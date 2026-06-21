@@ -273,10 +273,6 @@ defensible, honest signal for prioritization, even without real coordinate overl
         )
 
     if not has_round1:
-        st.warning(
-            "Round 1 demand data isn't loaded, so this tab shows violation density only. "
-            "Add `data/round1_demand.csv` (with a `demand` column) to activate the correlation index."
-        )
         st.markdown("#### Violation density as a standalone view")
         proxy = hotspots.head(15)[["rank", "top_junction", "top_station", "total_violations", "risk_score"]]
         st.dataframe(proxy, use_container_width=True, hide_index=True)
