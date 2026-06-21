@@ -53,15 +53,22 @@ streamlit run app.py
 
 That's it — no API keys, no database, no extra setup. The dataset is bundled in `data/`.
 
-### Optional: enabling the Round 1 cross-dataset feature
+### Round 1 cross-dataset feature — important note on methodology
 
-If you have the Round 1 geohash traffic-demand file, drop it into `data/round1_demand.csv`
-with at least these two columns (names are auto-detected, case-insensitive):
-- a geohash column (e.g. `geohash`)
-- a demand column (e.g. `demand` or `predicted_demand`)
+We initially planned a literal GPS overlay between Round 1 (geohash-based demand) and
+Round 2 (lat/lon violations). After checking: Round 1's `geohash` values are anonymized
+identifiers and do not decode to real Bengaluru coordinates -- decoding them lands in the
+Indian Ocean, nowhere near Bengaluru. A literal map overlay between the two datasets would
+therefore be fabricated, so we don't present one.
 
-Reload the app and the **Traffic Flow Impact Quantification** tab will activate automatically.
-Without this file, that tab still works but shows violation density only.
+Instead, `data/round1_demand.csv` (included, built from `train.csv`/`test.csv` using the
+same yesterday-demand lookup logic as the modeling notebook) is used for a percentile-rank
+correlation: each violation hotspot is ranked by severity and matched to the Round 1 cell at
+the same percentile of the demand distribution. This is a defensible distributional
+comparison, not a spatial claim -- the app's Tab 2 explains this methodology directly via an
+expandable panel rather than hiding it.
+
+To swap in a different Round 1 file, it just needs a `demand` (or `predicted_demand`) column.
 
 ## Deploying (what we used for the live demo)
 

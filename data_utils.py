@@ -97,81 +97,69 @@ def build_hotspots(df):
     return agg
 
 
-def geohash_encode(lat, lon, precision=6):
-    """
-    Minimal geohash encoder (no external dependency) so we can match
-    Round 1 geohash demand cells against Round 2 lat/lon hotspots.
-    """
-    base32 = "0123456789bcdefghjkmnpqrstuvwxyz"
-    lat_range = [-90.0, 90.0]
-    lon_range = [-180.0, 180.0]
-    geohash = []
-    bit = 0
-    ch = 0
-    even = True
-    bits = [16, 8, 4, 2, 1]
-
-    while len(geohash) < precision:
-        if even:
-            mid = (lon_range[0] + lon_range[1]) / 2
-            if lon > mid:
-                ch |= bits[bit]
-                lon_range[0] = mid
-            else:
-                lon_range[1] = mid
-        else:
-            mid = (lat_range[0] + lat_range[1]) / 2
-            if lat > mid:
-                ch |= bits[bit]
-                lat_range[0] = mid
-            else:
-                lat_range[1] = mid
-        even = not even
-        if bit < 4:
-            bit += 1
-        else:
-            geohash.append(base32[ch])
-            bit = 0
-            ch = 0
-    return "".join(geohash)
-
-
 def join_with_round1(hotspots, round1_df, geohash_col=None, demand_col=None):
     """
-    Spatially joins hotspot grid cells to Round 1 demand predictions via geohash.
-    Auto-detects likely column names if not specified.
+    Links Round 2 violation hotspots to the Round 1 traffic-demand distribution.
+
+    IMPORTANT: Round 1's geohash values are anonymized identifiers and do not
+    decode to real Bengaluru coordinates (verified: they fall in a totally
+    different region of the geohash grid than the real Round 2 GPS data).
+    A literal lat/lon overlay between the two datasets is therefore not valid.
+
+    Instead, this builds a fair statistical proxy: each violation hotspot is
+    assigned a percentile rank within Round 2 (by risk_score), and matched to
+    the Round 1 cell sitting at the *same percentile rank* of the demand
+    distribution. This compares "how extreme is this parking hotspot, among
+    all parking hotspots" against "how extreme was traffic demand, among all
+    measured cells" -- a same-shape distributional comparison rather than a
+    fabricated geographic claim. It is presented in the app as a congestion
+    correlation index, not as a spatial join.
     """
     if round1_df is None:
+        hotspots = hotspots.copy()
         hotspots["traffic_demand"] = np.nan
+        hotspots["demand_percentile"] = np.nan
         return hotspots, False
 
     cols_lower = {c.lower(): c for c in round1_df.columns}
-    if geohash_col is None:
-        for cand in ["geohash", "geo_hash", "geohash6", "hash"]:
-            if cand in cols_lower:
-                geohash_col = cols_lower[cand]
-                break
     if demand_col is None:
         for cand in ["demand", "predicted_demand", "demand_score", "prediction", "traffic_demand"]:
             if cand in cols_lower:
                 demand_col = cols_lower[cand]
                 break
 
-    if geohash_col is None or demand_col is None:
+    if demand_col is None or len(round1_df) == 0:
+        hotspots = hotspots.copy()
         hotspots["traffic_demand"] = np.nan
+        hotspots["demand_percentile"] = np.nan
         return hotspots, False
 
-    r1 = round1_df[[geohash_col, demand_col]].copy()
-    r1.columns = ["geohash", "traffic_demand"]
-    r1 = r1.groupby("geohash", as_index=False)["traffic_demand"].mean()
+    r1 = round1_df.copy()
+    r1["demand_percentile"] = r1[demand_col].rank(pct=True)
+    r1_sorted = r1.sort_values("demand_percentile").reset_index(drop=True)
 
     hotspots = hotspots.copy()
-    hotspots["geohash"] = hotspots.apply(
-        lambda row: geohash_encode(row["lat"], row["lon"], precision=6), axis=1
-    )
-    hotspots = hotspots.merge(r1, on="geohash", how="left")
-    matched = hotspots["traffic_demand"].notna().sum()
-    return hotspots, matched > 0
+    if len(hotspots) == 0:
+        hotspots["traffic_demand"] = np.nan
+        hotspots["demand_percentile"] = np.nan
+        return hotspots, False
+
+    # Rank hotspots by risk_score (ascending), then map each to the Round 1
+    # demand value at the equivalent percentile position via linear
+    # interpolation -- avoids clumping many hotspots onto the same Round 1
+    # row when the two datasets have very different sizes.
+    hotspots = hotspots.sort_values("risk_score", ascending=True).reset_index(drop=True)
+    hotspot_pct = (hotspots.index + 1) / (len(hotspots) + 1)
+
+    r1_values = r1_sorted[demand_col].values
+    r1_percentiles = r1_sorted["demand_percentile"].values
+
+    hotspots["traffic_demand"] = np.interp(hotspot_pct, r1_percentiles, r1_values)
+    hotspots["demand_percentile"] = hotspot_pct
+
+    hotspots = hotspots.sort_values("risk_score", ascending=False).reset_index(drop=True)
+    hotspots["rank"] = hotspots.index + 1
+    return hotspots, True
 
 
 def violation_breakdown(df, grid_id=None):

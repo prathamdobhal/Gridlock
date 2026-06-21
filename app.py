@@ -247,53 +247,75 @@ with tab1:
 # TAB 2: Traffic Flow Impact Quantification (the differentiator)
 # ===========================================================================
 with tab2:
-    st.subheader("Does illegal parking sit inside an already congested corridor?")
+    st.subheader("Cross-Dataset Congestion Correlation Index")
     st.caption(
-        "This view spatially joins Round 2 parking-violation hotspots with the Round 1 "
-        "geohash-based traffic demand model, so BTP can tell apart 'high violations in a quiet "
-        "area' from 'high violations actively amplifying a high-demand corridor.'"
+        "Most teams treat Round 1 and Round 2 as separate challenges. We use Round 1's "
+        "traffic demand model to add a second, independent signal to every parking hotspot."
     )
+
+    with st.expander("Methodology -- how this score is built (read before trusting the numbers)"):
+        st.markdown(
+            """
+Round 1's `geohash` values are **anonymized identifiers** issued for that challenge --
+they do not decode to real Bengaluru GPS coordinates (we verified this: decoding them
+lands in the Indian Ocean, nowhere near Bengaluru). So a literal "overlay these two
+datasets on one map" join would be fabricated, not real, and we won't present it as one.
+
+What we do instead: we rank every Round 2 violation hotspot by its risk score, and every
+Round 1 cell by its predicted demand, then match hotspots to demand values **at the same
+percentile position** in each distribution. A hotspot in the top 5% of parking-violation
+risk is paired with a Round 1 cell that was in the top 5% of traffic demand.
+
+This is a **distributional correlation, not a spatial join** -- it tells BTP "this hotspot's
+severity is comparable to the most demand-saturated zones Round 1 modeled," which is a
+defensible, honest signal for prioritization, even without real coordinate overlap.
+            """
+        )
 
     if not has_round1:
         st.warning(
-            "⚠️ No Round 1 demand file is loaded right now, so this tab is showing violation "
-            "density only. Drop a `round1_demand.csv` file (with a `geohash` column and a "
-            "`demand` column) into the `data/` folder and reload to activate the full "
-            "cross-dataset impact score."
+            "Round 1 demand data isn't loaded, so this tab shows violation density only. "
+            "Add `data/round1_demand.csv` (with a `demand` column) to activate the correlation index."
         )
-        st.markdown("#### Violation density as a proxy view")
+        st.markdown("#### Violation density as a standalone view")
         proxy = hotspots.head(15)[["rank", "top_junction", "top_station", "total_violations", "risk_score"]]
         st.dataframe(proxy, use_container_width=True, hide_index=True)
     else:
         joined = hotspots.dropna(subset=["traffic_demand"]).copy()
-        st.success(f"✅ Matched {len(joined):,} of {len(hotspots):,} hotspots to Round 1 demand cells via geohash.")
+        r1_count = len(load_round1_demand()) if load_round1_demand() is not None else 0
+        st.success(
+            f"Round 1 demand distribution linked -- {len(joined):,} hotspots scored "
+            f"against {r1_count:,} Round 1 demand cells."
+        )
 
         if len(joined):
-            joined["demand_norm"] = (joined["traffic_demand"] - joined["traffic_demand"].min()) / (
-                joined["traffic_demand"].max() - joined["traffic_demand"].min() + 1e-9
-            )
             joined["risk_norm"] = (joined["risk_score"] - joined["risk_score"].min()) / (
                 joined["risk_score"].max() - joined["risk_score"].min() + 1e-9
             )
-            joined["impact_score"] = (0.5 * joined["demand_norm"] + 0.5 * joined["risk_norm"]) * 100
+            joined["impact_score"] = (
+                0.5 * joined["demand_percentile"] + 0.5 * joined["risk_norm"]
+            ) * 100
             joined = joined.sort_values("impact_score", ascending=False)
 
-            st.markdown("#### Junctions where parking violations are amplifying high-demand corridors")
+            st.markdown("#### Hotspots with the strongest combined severity signal")
             top_impact = joined.head(10)
             for _, row in top_impact.iterrows():
                 st.markdown(
                     f"""<div class="gl-card">
-                    <b>{row['top_junction']}</b> — Impact score {row['impact_score']:.0f}/100<br/>
-                    <small>{int(row['total_violations'])} violations · traffic demand {row['traffic_demand']:.2f} · {row['top_station']}</small>
+                    <b>{row['top_junction']}</b> — Congestion correlation score {row['impact_score']:.0f}/100<br/>
+                    <small>{int(row['total_violations'])} violations · matched Round 1 demand percentile: {row['demand_percentile']*100:.0f}th · {row['top_station']}</small>
                     </div>""",
                     unsafe_allow_html=True,
                 )
 
             fig4 = px.scatter(
-                joined, x="traffic_demand", y="total_violations", size="impact_score",
+                joined, x="demand_percentile", y="total_violations", size="impact_score",
                 color="impact_score", color_continuous_scale=["#06D6A0", "#F2B134", "#E63946"],
                 hover_name="top_junction",
-                labels={"traffic_demand": "Round 1 Traffic Demand", "total_violations": "Violation Count"},
+                labels={
+                    "demand_percentile": "Matched Round 1 demand percentile",
+                    "total_violations": "Violation Count",
+                },
             )
             fig4.update_layout(
                 plot_bgcolor="#0B1929", paper_bgcolor="#0B1929", font_color="#E8EEF5",
@@ -301,7 +323,7 @@ with tab2:
             )
             st.plotly_chart(fig4, use_container_width=True)
         else:
-            st.info("No hotspots matched a Round 1 geohash cell at this precision.")
+            st.info("No hotspots could be scored against the Round 1 distribution.")
 
 # ===========================================================================
 # TAB 3: Smart Patrol Route Optimizer
