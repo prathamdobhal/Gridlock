@@ -1,3 +1,14 @@
+---
+title: GRIDLOCK
+emoji: 🚦
+colorFrom: blue
+colorTo: green
+sdk: streamlit
+sdk_version: "1.45.1"
+app_file: app.py
+pinned: false
+---
+
 # GRIDLOCK — Parking-Induced Congestion Intelligence
 
 AI-driven detection of illegal-parking hotspots in Bengaluru and their impact on traffic flow,
