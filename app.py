@@ -152,6 +152,11 @@ with tab1:
             st.warning("No data matches the current filters.")
         else:
             map_df = hotspots.head(500).copy()
+            map_df = map_df.dropna(subset=["lat", "lon"])
+
+            if len(map_df) == 0:
+                st.warning("No valid hotspot coordinates found.")
+                st.stop()
             max_risk = max(map_df["risk_score"].max(), 1)
             map_df["radius"] = 30 + (map_df["risk_score"] / max_risk) * 150
             map_df["color_r"] = 230
@@ -185,7 +190,7 @@ with tab1:
                     layers=[layer],
                     initial_view_state=view_state,
                     tooltip=tooltip,
-                    map_style="mapbox://styles/mapbox/dark-v10",
+                    map_style="dark",
                 )
             )
 
@@ -350,9 +355,16 @@ with tab3:
                 start_lat = hotspots.iloc[0]["lat"]
                 start_lon = hotspots.iloc[0]["lon"]
             else:
-                station_rows = filtered[filtered["police_station"] == station_choice]
-                start_lat = station_rows["lat"].mean()
-                start_lon = station_rows["lon"].mean()
+                station_rows = filtered[
+                    filtered["police_station"] == station_choice
+                ]
+
+                if len(station_rows):
+                    start_lat = float(station_rows["lat"].mean())
+                    start_lon = float(station_rows["lon"].mean())
+                else:
+                    start_lat = float(hotspots.iloc[0]["lat"])
+                    start_lon = float(hotspots.iloc[0]["lon"])
 
             with st.spinner("Optimizing routes..."):
                 routes, stats_list, summary = optimize_patrols(
@@ -365,6 +377,7 @@ with tab3:
             s3.metric("Violations Addressed", summary["total_violations_covered"])
 
             st.markdown("#### Route map")
+            routes = routes.dropna(subset=["lat", "lon"])
             if len(routes):
                 colors = [[230, 57, 70], [242, 177, 52], [6, 214, 160], [29, 161, 242],
                           [155, 89, 182], [230, 126, 34], [52, 152, 219], [231, 76, 60],
@@ -404,7 +417,7 @@ with tab3:
                     pdk.Deck(
                         layers=layers,
                         initial_view_state=view_state,
-                        map_style="mapbox://styles/mapbox/dark-v10",
+                        map_style="dark",
                         tooltip={"html": "<b>{junction}</b><br/>Stop #{stop_number}<br/>Risk: {risk_score}"},
                     )
                 )
@@ -439,8 +452,16 @@ with tab4:
 
     o1, o2 = st.columns(2)
     o1.metric("Repeat Offender Vehicles", f"{len(offenders):,}")
-    o2.metric("Most Violations (single vehicle)", int(offenders["violation_count"].max()) if len(offenders) else 0)
+    max_count = (
+        int(offenders["violation_count"].fillna(0).max())
+        if len(offenders)
+        else 0
+    )
 
+    o2.metric(
+        "Most Violations (single vehicle)",
+        max_count
+    )
     if len(offenders):
         st.dataframe(
             offenders.rename(columns={

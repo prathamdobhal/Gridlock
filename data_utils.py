@@ -168,12 +168,56 @@ def violation_breakdown(df, grid_id=None):
 
 
 def repeat_offenders(df, min_violations=5):
-    counts = df.groupby("vehicle_number").agg(
-        violation_count=("id", "count"),
-        vehicle_type=("vehicle_type", "first"),
-        stations=("police_station", lambda x: ", ".join(sorted(set(x.dropna()))[:3])),
-        top_violation=("violation", lambda x: x.value_counts().index[0]),
-    ).reset_index()
-    counts = counts[counts["violation_count"] >= min_violations]
-    counts = counts.sort_values("violation_count", ascending=False).reset_index(drop=True)
-    return counts
+
+    working = df.copy()
+
+    working = working[
+        working["vehicle_number"].notna()
+    ]
+
+    working = working[
+        working["vehicle_number"].astype(str).str.strip() != ""
+    ]
+
+    if len(working) == 0:
+        return pd.DataFrame(
+            columns=[
+                "vehicle_number",
+                "violation_count",
+                "vehicle_type",
+                "stations",
+                "top_violation",
+            ]
+        )
+
+    counts = (
+        working.groupby("vehicle_number")
+        .agg(
+            violation_count=("id", "count"),
+            vehicle_type=("vehicle_type", "first"),
+            stations=(
+                "police_station",
+                lambda x: ", ".join(
+                    sorted(set(x.dropna().astype(str)))[:3]
+                ),
+            ),
+            top_violation=(
+                "violation",
+                lambda x: x.mode().iloc[0]
+                if len(x.mode())
+                else ""
+            ),
+        )
+        .reset_index()
+    )
+
+    counts = counts[
+        counts["violation_count"] >= min_violations
+    ]
+
+    counts = counts.sort_values(
+        "violation_count",
+        ascending=False,
+    )
+
+    return counts.reset_index(drop=True)
