@@ -581,6 +581,16 @@ with tab4:
     f"{len(offenders):,} repeat-offender vehicles account for "
     f"{contribution_pct:.1f}% of all recorded violations in the current view."
     )
+    
+    offenders["risk_category"] = pd.cut(
+    offenders["violation_count"],
+    bins=[0, 5, 10, 20, 1000],
+    labels=[
+        "Medium",
+        "High",
+        "Critical"
+    ]
+)
     if len(offenders):
         st.dataframe(
             offenders.rename(columns={
@@ -603,6 +613,7 @@ with tab4:
         st.plotly_chart(fig5, use_container_width=True)
     else:
         st.info("No vehicles cross this threshold under current filters.")
+    
 
 st.markdown("---")
 st.caption(
