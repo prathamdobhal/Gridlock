@@ -583,14 +583,14 @@ with tab4:
     )
     
     offenders["risk_category"] = pd.cut(
-    offenders["violation_count"],
-    bins=[0, 5, 10, 20, 1000],
-    labels=[
-        "Medium",
-        "High",
-        "Critical"
-    ]
-)
+        offenders["violation_count"],
+        bins=[0, 5, 15, 1000],
+        labels=[
+            "Medium",
+            "High",
+            "Critical"
+        ]
+    )
     if len(offenders):
         st.dataframe(
             offenders.rename(columns={
