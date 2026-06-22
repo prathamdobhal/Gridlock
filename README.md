@@ -1,5 +1,5 @@
 ---
-title: GRIDLOCK
+title: ProjectX​
 emoji: 🚦
 colorFrom: blue
 colorTo: green
@@ -9,7 +9,7 @@ app_file: app.py
 pinned: false
 ---
 
-# GRIDLOCK — Parking-Induced Congestion Intelligence
+# ProjectX​ — Parking-Induced Congestion Intelligence
 
 AI-driven detection of illegal-parking hotspots in Bengaluru and their impact on traffic flow,
 built for the Flipkart Gridlock Hackathon 2.0 — Prototype Phase (Theme 1: Poor Visibility on

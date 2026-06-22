@@ -16,7 +16,7 @@ from data_utils import (
 from patrol_optimizer import optimize_patrols
 
 st.set_page_config(
-    page_title="GRIDLOCK | Parking Intelligence",
+    page_title="ProjectX​ | Parking Intelligence",
     page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -65,7 +65,7 @@ df, hotspots_all, has_round1 = get_data()
 # ---------------------------------------------------------------------------
 # Sidebar filters
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("## 🚦 GRIDLOCK")
+st.sidebar.markdown("## 🚦 ProjectX​")
 st.sidebar.caption("Parking-Induced Congestion Intelligence · Bengaluru")
 st.sidebar.markdown("---")
 
@@ -107,7 +107,7 @@ if has_round1:
 # ---------------------------------------------------------------------------
 # Header + KPIs
 # ---------------------------------------------------------------------------
-st.title("🚦 GRIDLOCK — Parking-Induced Congestion Intelligence")
+st.title("🚦 ProjectX​ — Parking-Induced Congestion Intelligence")
 st.caption(
     "AI-driven detection of illegal-parking hotspots and their impact on Bengaluru traffic flow, "
     "built for targeted Bengaluru Traffic Police enforcement."
@@ -140,6 +140,48 @@ tab1, tab2, tab3, tab4 = st.tabs(
 # ===========================================================================
 with tab1:
     st.subheader("Where illegal parking is concentrated")
+    with st.expander("How ProjectX​ calculates hotspot risk"):
+        st.markdown(
+                """
+        ### Risk Scoring Methodology
+
+        ProjectX​ does not treat all parking violations equally.
+
+        Violations that directly obstruct traffic movement or endanger pedestrians
+        are assigned higher weights.
+
+        | Violation Type | Weight |
+        |---------------|----------|
+        | Parking Near Road Crossing | 3x |
+        | Parking Near School / Hospital / Bus Stop | 3x |
+        | Parking Near Traffic Light / Zebra Crossing | 3x |
+        | Double Parking | 2x |
+        | Parking On Footpath | 2x |
+        | Parking Opposite Another Parked Vehicle | 2x |
+        | Parking In Main Road | 2x |
+        | Wrong Parking | 1x |
+        | No Parking | 1x |
+
+        Hotspot Risk Score = Sum of weighted violations inside a geo-spatial hotspot.
+
+        This prioritizes locations with the greatest potential operational impact rather
+        than simply ranking locations by raw violation count.
+        """
+        )
+        st.markdown(
+            """
+        ### Hotspot Formation
+
+        Individual violations are grouped into approximately 165-meter geographic cells.
+
+        This prevents nearby violations from being treated as separate locations and
+        allows ProjectX​ to identify persistent parking-risk zones rather than isolated incidents.
+        """
+        )
+    st.info(
+    "Higher risk scores indicate locations where parking behaviour is more likely "
+    "to obstruct traffic flow, reduce road capacity, or create safety hazards."
+)
     st.caption(
         "Each point is a ~165m grid cell. Size and color reflect a weighted risk score "
         "(violations near schools, hospitals, crossings, and double-parking are weighted higher than routine parking)."
@@ -198,13 +240,29 @@ with tab1:
         st.markdown("**Top 10 highest-risk hotspots**")
         if len(hotspots):
             top10 = hotspots.head(10)
+            risk_q1 = hotspots["risk_score"].quantile(0.33)
+            risk_q2 = hotspots["risk_score"].quantile(0.66)
+
             for _, row in top10.iterrows():
-                badge = "gl-badge-high" if row["risk_score"] >= top10["risk_score"].quantile(0.66) else "gl-badge-med"
+
+                if row["risk_score"] >= risk_q2:
+                    badge = "gl-badge-high"
+                    risk_tier = "🔴 Critical Risk"
+
+                elif row["risk_score"] >= risk_q1:
+                    badge = "gl-badge-med"
+                    risk_tier = "🟠 High Risk"
+
+                else:
+                    badge = "gl-badge-low"
+                    risk_tier = "🟢 Medium Risk"
+
                 st.markdown(
                     f"""<div class="gl-card">
                     <span class="gl-badge {badge}">RANK {int(row['rank'])}</span><br/>
                     <b>{row['top_junction']}</b><br/>
-                    <small>{row['top_station']} · {int(row['total_violations'])} violations · risk {int(row['risk_score'])}</small>
+                    <small>{risk_tier}</small><br/>
+                    <small>{row['top_station']} · {int(row['total_violations'])} violations · risk score {int(row['risk_score'])}</small>
                     </div>""",
                     unsafe_allow_html=True,
                 )
@@ -330,11 +388,9 @@ defensible, honest signal for prioritization, even without real coordinate overl
 # TAB 3: Smart Patrol Route Optimizer
 # ===========================================================================
 with tab3:
-    st.subheader("Generate an optimal patrol route for available units")
+    st.subheader("AI-Assisted Patrol Deployment Planner")
     st.caption(
-        "Given a number of patrol units and a shift length, this builds routes that "
-        "prioritize high-risk hotspots reachable within the time budget — turning the "
-        "hotspot list into something a station officer can actually act on."
+        "Given limited enforcement resources, ProjectX​ allocates patrol units to maximize parking-risk coverage within the available shift duration."
     )
 
     c1, c2, c3 = st.columns(3)
@@ -371,11 +427,52 @@ with tab3:
                     hotspots, num_units, shift_hours, start_lat, start_lon
                 )
 
-            s1, s2, s3 = st.columns(3)
-            s1.metric("Total Stops Planned", summary["total_stops"])
-            s2.metric("Risk Score Covered", summary["total_risk_covered"])
-            s3.metric("Violations Addressed", summary["total_violations_covered"])
+                total_city_risk = hotspots["risk_score"].sum()
 
+                coverage_pct = (
+                    (summary["total_risk_covered"] / total_city_risk) * 100
+                    if total_city_risk > 0
+                    else 0
+                )
+
+                s1, s2, s3, s4 = st.columns(4)
+
+                s1.metric(
+                    "Total Stops Planned",
+                    summary["total_stops"]
+                )
+
+                s2.metric(
+                    "Risk Score Covered",
+                    summary["total_risk_covered"]
+                )
+
+                s3.metric(
+                    "Violations Addressed",
+                    summary["total_violations_covered"]
+                )
+
+                s4.metric(
+                    "Risk Coverage %",
+                    f"{coverage_pct:.1f}%"
+                )
+                risk_per_stop = (
+                summary["total_risk_covered"] / max(summary["total_stops"], 1)
+            )
+
+            st.info(
+                f"The current deployment plan covers "
+                f"{coverage_pct:.1f}% of identified citywide parking risk "
+                f"within the available shift duration."
+            )
+            best_unit = np.argmax(
+                [x["total_risk_covered"] for x in stats_list]
+            )+1
+
+            st.success(
+                f"Unit {best_unit} captures the highest enforcement value "
+                f"under the current deployment plan."
+            )
             st.markdown("#### Route map")
             routes = routes.dropna(subset=["lat", "lon"])
             if len(routes):
@@ -449,8 +546,22 @@ with tab4:
 
     min_viol = st.slider("Minimum violations to flag as repeat offender", 2, 20, 5)
     offenders = repeat_offenders(filtered, min_violations=min_viol)
+    total_violations = len(filtered)
 
-    o1, o2 = st.columns(2)
+    offender_violations = (
+        filtered[
+            filtered["vehicle_number"].isin(
+                offenders["vehicle_number"]
+            )
+        ].shape[0]
+    )
+
+    contribution_pct = (
+        offender_violations / total_violations * 100
+        if total_violations > 0
+        else 0
+    )
+    o1, o2, o3 = st.columns(3)
     o1.metric("Repeat Offender Vehicles", f"{len(offenders):,}")
     max_count = (
         int(offenders["violation_count"].fillna(0).max())
@@ -461,6 +572,14 @@ with tab4:
     o2.metric(
         "Most Violations (single vehicle)",
         max_count
+    )
+    o3.metric(
+    "Violation Share",
+    f"{contribution_pct:.1f}%"
+    )
+    st.info(
+    f"{len(offenders):,} repeat-offender vehicles account for "
+    f"{contribution_pct:.1f}% of all recorded violations in the current view."
     )
     if len(offenders):
         st.dataframe(
@@ -487,5 +606,5 @@ with tab4:
 
 st.markdown("---")
 st.caption(
-    "GRIDLOCK Hackathon 2.0 · Prototype Phase · Built on Bengaluru Traffic Police parking violation data (298K+ records, Nov 2023–Apr 2024)"
+    "ProjectX​ Hackathon 2.0 · Prototype Phase · Built on Bengaluru Traffic Police parking violation data (298K+ records, Nov 2023–Apr 2024)"
 )

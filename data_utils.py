@@ -1,5 +1,5 @@
 """
-Core data utilities for GRIDLOCK Parking Intelligence.
+Core data utilities for ProjectX​ Parking Intelligence.
 Loads the cleaned violations dataset, builds geo-grid hotspots,
 and optionally joins Round 1 geohash demand data if present.
 """
